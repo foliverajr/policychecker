@@ -6,9 +6,11 @@
 
 from pygerrit2 import GerritRestAPI, HTTPBasicAuth
 
+from crypto_manager import *
 from configs.gerrit_config import *
 from utils import file_path_trim
-from crypto_manager import *
+from constants import *
+
 
 # create the REST API call
 def get_rest_api(username, password, url):
