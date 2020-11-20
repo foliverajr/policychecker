@@ -6,10 +6,10 @@
 
 from pygerrit2 import GerritRestAPI, HTTPBasicAuth
 
-from crypto_manager import *
-from configs.gerrit_config import *
-from utils import file_path_trim
-from constants import *
+from .crypto_manager import *
+from .configs.gerrit_config import *
+from .utils import file_path_trim
+from .constants import *
 
 
 # create the REST API call
