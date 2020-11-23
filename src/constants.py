@@ -5,7 +5,7 @@ GITHUB_API = "https://api.github.com/repos"
 
 # Gerrit
 CONFIG_BRANCH = 'refs/meta/config'
-CONFIG_FILE = 'project.config'
+CONFIG_PROJECT = 'project.config'
 CONFIG_GROUP = 'groups'
 CONFIG_RULES = 'rules.pl'
 ALL_PROJECTS = 'All-Projects'

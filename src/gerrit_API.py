@@ -126,9 +126,9 @@ def form_crp(project):
     try:
         # rules.pl is not created by default. It is 
         # available only if there is a customized rule.
-        rules_pl = get_blob_content(ALL_PROJECTS, ap_head, 'rules.pl')
+        rules_pl = get_blob_content(ALL_PROJECTS, ap_head, CONFIG_RULES)
         groups = get_blob_content(ALL_PROJECTS, ap_head, CONFIG_GROUP)
-        project_config = get_blob_content(ALL_PROJECTS, ap_head, CONFIG_FILE)
+        project_config = get_blob_content(ALL_PROJECTS, ap_head, CONFIG_PROJECT)
     except Exception:
         pass
 
