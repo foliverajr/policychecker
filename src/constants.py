@@ -2,6 +2,7 @@
 CODEOWNERS = ".github/CODEOWNERS"
 GITATTRIBUTES = ".git/info/attributes"
 GITHUB_API = "https://api.github.com/repos"
+GITHUB = 'github'
 
 # Gerrit
 CONFIG_BRANCH = 'refs/meta/config'
@@ -9,6 +10,7 @@ CONFIG_PROJECT = 'project.config'
 CONFIG_GROUP = 'groups'
 CONFIG_RULES = 'rules.pl'
 ALL_PROJECTS = 'All-Projects'
+GERRIT = 'gerrit'
 
 # Git
 FIRSTCOMMIT = 'FirstCommit'
