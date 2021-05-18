@@ -10,7 +10,10 @@ import re
 
 # Load public key info from a local path
 def load_local_pub_keys(local_path):
-    gpg = GPG(gnupghome = local_path)
+    try:
+        gpg = gnupg.GPG(gnupghome=local_path) 
+    except TypeError:
+        gpg = gnupg.GPG(homedir=local_path)
     # Get GPG public keys
     public_keys = gpg.list_keys()
     key_info = {'GPG':[], 'Ed25519':[]}
@@ -121,11 +124,17 @@ def ed25519_sign_message(crp):
 
 # Sign a message using the gpg signature
 def gpg_sign_message(message):
-    gpg = GPG(gnupghome = KEYS_DIR)
+    try:
+        gpg = gnupg.GPG(gnupghome=KEYS_DIR) 
+    except TypeError:
+        gpg = gnupg.GPG(homedir=KEYS_DIR)
     return gpg.sign(message, detach=True)
 
 
 # Verify a gpg signature
 def gpg_verify_signature(signature_file, message):
-    gpg = GPG(gnupghome = KEYS_DIR)
+    try:
+        gpg = gnupg.GPG(gnupghome=KEYS_DIR) 
+    except TypeError:
+        gpg = gnupg.GPG(homedir=KEYS_DIR)
     return gpg.verify_data(signature_file, message)
