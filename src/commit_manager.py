@@ -56,6 +56,17 @@ def get_branch_commits(repo, branch):
     return branch_commits
 
 
+# Get a subset of branch commits
+def get_branch_subset_commits(repo, start_sha, end_sha):
+    # Get all commits between the two SHAs
+    commits = list(repo.iter_commits(start_sha + '..' + end_sha))
+    commits.append(repo.commit(start_sha))
+    
+    # Returns a list of subset commits
+    # in order from newest to oldest
+    return commits
+
+
 # Get the head of a branch
 def get_branch_head(repo, branch):
     # The branch head can be obtained by
