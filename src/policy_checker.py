@@ -32,125 +32,57 @@
 
 # TODO: Check code reviews against review policies
 
+import os
 import argparse
 import re
 from sys import exit
 
-from code_review_policy import *
 from commit_manager import *
 from constants import *
-from crp_manager import *
 from github_API import *
 from gerrit_API import *
+from github_crp_manager import *
+from gerrit_crp_manager import *
 from review_manager import *
 
 
-# Check if the reviews created on GitHub are legitimate
-def github_validate_reviews(merge_commits, review_units):
-    return True
-
-
-def check_gerrit_labels(crp, review_units):
-    #TODO check if rule is met
-    # https://github.com/GerritCodeReview/gerrit/blob/master/java/com/google/gerrit/server/rules/DefaultSubmitRule.java#L107
-    # https://github.com/GerritCodeReview/gerrit/blob/master/java/com/google/gerrit/entities/LabelFunction.java#L91-#L123
-
-    #extract the default policy
-    label = gerrit_extract_labels(crp)
-    rule = GERRIT_LABELS[label.upper()]
-
-    project_config = parse_crp(crp)[CONFIG_PROJECT]
-
-    status = "MAY"
-    if rule["isRequired"]:
-        status = "NEED"
-
-    for item in review_units:
-        signature, review = split_review_unit(item)
-        comment, score, reviewer = parse_review(review)
-
-        if score == '0':
-            continue
-
-        if rule["isBlock"] and is_max_negative(project_config, score):
-            if not is_allowed_to_block(crp, reviewer):
-                exit("Committer is not allowed to block the change")
-            status = "REJECT"
-            return status
-
-        if is_max_positive(project_config, score) or not rule["requiresMaxValue"]:
-            if not is_allowed_to_approve(crp, reviewer):
-                exit("Committer is not allowed to approve the change")
-            status = "MAY"
-
-            if rule["isRequired"]:
-                status = "OK"
-
-        #check for status
-        #https://github.com/GerritCodeReview/gerrit/blob/master/java/com/google/gerrit/server/rules/DefaultSubmitRule.java#L110
-
-    return status
-
-
-# Check if the reviews created on GitHub are legitimate
-def gerrit_validate_reviews(crp, review_units):
-    # Check if the basic rules (based on labels) are met
-    if not check_gerrit_labels(crp, review_units):
-        return False
-
-    # Check if the minimum number of approving reviews is met
-    if not check_min_approvals(crp, review_units):
-        return False
-
-    # Check if there are required reviews from specific users
-    if not check_required_reviews(crp, review_units):
-        return False
-
-    # Check if stale approving reviews are dismissed
-    if not check_review_dismissal (crp, review_units):
-        return False
-
-    return True
-
-
 # Check if the review units are legitimate
-def validate_reviews(server, crp, merge_commit_type, merge_commits, review_units):
-    # Check if review units have valid signature
-    if not validate_reviews_signatures(review_units):
+def validate_reviews(server, crp, review_info):
+    merge_method, merge_commits, review_units = review_info
+    # Check if code reviews have valid signature 
+    # and the chain of code reviews is valid.
+    if not validate_review_signatures(review_units):
         return False
 
-    # Check if review chain is valid
-    if not validate_review_chain(review_units):
-        return False
-
-    # Check for the first commit and direct pushes
-    if merge_commit_type == FIRSTCOMMIT:
+    # Check for the first commit and the direct push
+    if merge_method == FIRSTCOMMIT:
         return True
-    elif merge_commit_type == DIRECTPUSH:
-        return check_direct_push(merge_commits)
-
-    # Check if the merger has the permission
-    if not is_authorized_merger(crp, merge_commits):
-        return False
-
-    #Check if the author of code was authorized
-    if not is_authorized_committer(crp, merge_commits):
-        return False
 
     # Check if policy rules are violated
     if server == GITHUB:
-        return github_validate_reviews(merge_commits, review_units)
+        return github_validate_reviews(crp, merge_commits, review_units)
     else:
-        return gerrit_validate_reviews(merge_commits, review_units)
+        return gerrit_validate_reviews(crp, merge_commits, review_units)
 
 
 # Validate all reviews in a branch
-def validate_branch(server, repo, branch):
+def validate_branch(server, repo_path, branch):
+    try:
+        # Create the local Repo object
+        repo = Repo(repo_path)
+    except Exception:
+        exit(f"{repo_path} is not a valid Git repository path")
+
+    # Extract the repo name from the repo path
+    # e.g., 'd1/d2/f1' returns 'f1'
+    repo_name = os.path.basename(repo_path)
+
+    # Validate the CRP signature
     valid = True
     if server == GITHUB:
-        crp, valid = validate_github_crp(repo, branch)
+        crp, valid = validate_github_crp(repo_name, branch)
     elif server == GERRIT:
-        crp, valid = validate_gerrit_crp(repo, branch)
+        crp, valid = validate_gerrit_crp(repo_name, branch)
     else:
         exit(f"{server} is not supported!")
 
@@ -163,7 +95,7 @@ def validate_branch(server, repo, branch):
 
     # Check commit signatures
     for commit in list(commits):
-        if not validate_commit_signature(commit):
+        if not validate_commit_signature(repo, commit):
             return False
 
     # Get the branch head
@@ -175,13 +107,15 @@ def validate_branch(server, repo, branch):
     # Extract the commits in the merge request that
     # corresponds to the current branch head
     while commits:
-        merge_commit_type, merge_commits, review_units = extract_review_units(server, repo, branch_head)
-        if not validate_reviews(server, crp, merge_commit_type, merge_commits, review_units):
+        # review_info = [merge_method, merge_commits, review_units]
+        review_info = extract_review_units(server, repo, branch_head)
+        if not validate_reviews(server, crp, review_info):
             # TODO: Make it more informative per result
             exit('Review Units are not valid')
 
         # Remove commits in merge request from the set Commits
-        remove_visited_commit(commits, merge_commits)
+        # merge_commits: review_info [1]
+        remove_visited_commit(commits, review_info[1])
 
         # Update the head to the head commit of the branch represented
         # by commits left in the set Commits
@@ -207,7 +141,7 @@ def create_parser():
         help='the path to the repository', )
         
     parser.add_argument('-b', '--branch', type=str, required=True,
-    help='the repository branch', )
+        help='the repository branch', )
 
     parser.add_argument('-s', '--server', type=str, required=True,
         help='the code review server either GitHub or Gerrit', )
@@ -228,12 +162,13 @@ def main():
     # Parse arguments
     parser = create_parser()
     args = parser.parse_args()
+
     server = args.server.lower()
-    repo = args.repo
     branch = args.branch
+    repo_path = args.repo.rstrip('/')
     
     # Validate the branch
-    validate_branch(server, repo, branch)
+    validate_branch(server, repo_path, branch)
 
 
 if __name__ == "__main__":

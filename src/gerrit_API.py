@@ -29,7 +29,7 @@ def get_access_rights(g, project):
 
 
 # Get the head
-def get_branch_head(g, project, branch):
+def _get_branch_head(g, project, branch):
     '''
     TODO
     - get the head of refs/meta/config directly by
@@ -65,6 +65,44 @@ def list_files(g, project, head):
     return g.get(endpoint = endpoint)
 
 
+# Find the groups that a committer is in
+def find_group_membership(committer_name, committer_email):
+    g = get_rest_api(USER, PASS, url)
+    # Get all of the groups in the Gerrit project
+    groups = list_groups(g)
+    committers_groups = []
+
+    for group in groups:
+        group_id = groups[group]['group_id']
+        for member in get_group_info(g, group_id)['members']:
+            if (
+                member['name'] == committer_name
+                and member['email'] == committer_email
+            ):
+                committers_groups.append(group)
+    
+    return committers_groups
+
+
+# Get each group's members
+def _get_group_members(g):
+    groups = list_groups(g)
+    group_members = {}
+
+    for group in groups:
+        group_id = groups[group]['group_id']
+        group_info = get_group_info(g, group_id)
+
+        # Create a record in the dictionary
+        # with the key being the group name
+        # and the value being a list of each
+        # member's Gerrit profile info
+        group_members[group_info['name']] = \
+            group_info['members']
+
+    return group_members
+
+
 # Get a list of groups
 def list_groups(g):
     endpoint = f"groups/"
@@ -91,7 +129,7 @@ def get_account_info(g, aid):
 
 
 # Store the crp signature as review label on the server
-def store_crp_signature(g, project, crp_signature):
+def _store_crp_signature(g, project, crp_signature):
     label = {
         'commit_message' : 'Code-Review-Policy',
         'values' : { '0' : crp_signature }
@@ -102,38 +140,44 @@ def store_crp_signature(g, project, crp_signature):
 
 
 # Retrive the crp signature from the Gerrit server
-def get_crp_signature(g, project):
+def _get_crp_signature(g, project):
     endpoint = f"projects/{project}/labels/Code-Review-Policy"
     review_label = g.get(endpoint = endpoint)
     return review_label['values'][' 0'].encode()
 
 
 # Form the code revivew policy
-def form_gerrit_crp(g, project):
-    # TODO: Update the retrieval function
+def _form_gerrit_crp(g, project):
+    # FIXME: Update the retrieval function
     # Now: Assume that any project inherits the
     # entire code review policy from ALL_PROJECTS
     # Later: Check if a project has its own crp
 
-    #cb_head = get_branch_head(project, CONFIG_BRANCH)
-    ap_head = get_branch_head(g, ALL_PROJECTS, CONFIG_BRANCH)
+    #cb_head = _get_branch_head(project, CONFIG_BRANCH)
+    ap_head = _get_branch_head(g, ALL_PROJECTS, CONFIG_BRANCH)
 
     rules_pl = ''
     project_config = ''
     groups = ''
+    members = {}
+
     try:
         # rules.pl is not created by default. It is
         # available only if there is a customized rule.
         rules_pl = get_blob_content(g, ALL_PROJECTS, ap_head, CONFIG_RULES)
         groups = get_blob_content(g, ALL_PROJECTS, ap_head, CONFIG_GROUP)
         project_config = get_blob_content(g, ALL_PROJECTS, ap_head, CONFIG_PROJECT)
+        members = _get_group_members(g)
     except Exception:
         pass
 
-	#TODO:
-	#	- Strip all strings
-	# 	-DOC: The CRP format is as follows:
-    crp = f"{rules_pl}{project_config}{groups}"
+	#TODO: Add DOC for the CRP format
+    crp = (
+        f"RULES\n{rules_pl}"
+        f"\nPROJECTCONFIG\n{project_config}"
+        f"\nGROUPS\n{groups}"
+        f"\nMEMBERS\n{members}"
+    )
     return crp.encode()
 
 
@@ -143,14 +187,13 @@ def validate_gerrit_crp(repo, branch):
 	REST = get_rest_api(USER, PASS, url)
 
 	# Form the CRP
-	crp = form_gerrit_crp(REST, repo)
-	print(crp)
+	crp = _form_gerrit_crp(REST, repo)
 
+    # FIXME: Remove this part
 	# Sign and Store the CRP
 	crp_signature, verify_key = ed25519_sign_message(crp)
-	result = store_crp_signature(REST, repo, crp_signature)
-	print(result)
+	_store_crp_signature(REST, repo, crp_signature)
 
 	# Retrieve and Verify CRP
-	retrieved_signature = get_crp_signature(repo)
+	retrieved_signature = _get_crp_signature(REST, repo)
 	return crp, verify_signature(crp, retrieved_signature, verify_key)

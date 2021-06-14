@@ -10,6 +10,39 @@ from gerrit_API import *
 from review_manager import is_first_review
 
 
+# List commits with code changes in a PR
+def get_pr_code_changes(merge_commits):
+    commits = []
+    for commit in merge_commits:
+        # Add commit to list if it's
+        # the first in the branch
+        if not commit.parents:
+            commits.append(commit)
+        else:
+            # Compare each commit with its parent and add it
+            # to commits list if there are code changes
+            first_parent = commit.parents[0]
+            changed_files = get_commits_diff(
+                repo, 
+                commit.hexsha, 
+                first_parent.hexsha)
+                
+            if changed_files:
+                commits.append(commit)
+
+    return commits
+
+
+# List files modified in a commit from its parent
+def get_commits_diff(repo, first_sha, second_sha):
+    changed_files = repo.git.diff(
+        f"{first_sha}..{second_sha}",
+        name_only=True
+        ).split('\n')
+
+    return changed_files
+
+
 # List all commits in a branch
 def get_branch_commits(repo, branch):
     branch_commits = []
@@ -33,8 +66,9 @@ def get_branch_head(repo, branch):
 
 
 # Remove visited commits
-def remove_visited_commit(commits, merge_commits):
-    for commit in merge_commits:
+# TODO: Improve this method
+def remove_visited_commit(commits, visited_commits):
+    for commit in visited_commits:
         commits.remove(commit)
 
 
@@ -67,49 +101,7 @@ def validate_commit_signature(repo, commit):
 # Check if he commit has multiple parents
 def has_multiple_parents(commit):
     return len(commit.parents) > 1
-
-
-# Check if the committer has the push permission
-def has_direct_push_permission(committer, permissions):
-    # Get the project config with an API call
-    # This code is for testing purposes only
-    ap_head = get_branch_head(ALL_PROJECTS, CONFIG_BRANCH)
-    project_config = get_blob_content(ALL_PROJECTS, ap_head, CONFIG_PROJECT)
-
-    committers_groups = find_group_membership(
-        committer.name,
-        committer.email
-    )
-    # Extract the 'refs/heads/*' access rights which contains
-    # the groups that are allowed to direct push onto ALL branches
-    access_rights = re.search("\[access \"refs/heads/\*\"\]"
-        "[\s\S]+?(?=\[)", project_config).group()
-
-    # Check each group to see if one has the direct push permission
-    for g in committers_groups:
-        if f"push = group {g}" in access_rights:
-            return True
-
-    return False
-
-
-# Find the groups that a committer is in
-def find_group_membership(committer_name, committer_email):
-    # Get all of the groups in the Gerrit project
-    groups = list_groups()
-    committers_groups = []
-
-    for g in groups:
-        g_id = groups[g]['group_id']
-        for member in get_group_info(g_id)['members']:
-            if (
-                member['name'] == committer_name
-                and member['email'] == committer_email
-            ):
-                committers_groups.append(g)
     
-    return committers_groups
-
 
 # Extrcact all review units in a commit
 def get_review_units(commit):
@@ -169,6 +161,12 @@ def get_pr_commits(server, repo, commit):
     return merge_commits
 
 
+# Check if author and committer timestamps are the same
+def compare_timestamps(commit):
+    return commit.authored_datetime == \
+        commit.comitted_datetime
+
+
 # TOTO: Merge Gerrit and GitHub versions
 # Extract the GitHub merge requests' commits
 def github_extract_merge_request_commits(repo, commit):
@@ -178,12 +176,12 @@ def github_extract_merge_request_commits(repo, commit):
 
     merge_commits = []
     review_units = []
-    commit_type = MERGE
+    merge_method = MERGE
 
     # FIRSTCOMMIT:
     # A commit with no parents
     if p == 0:
-        commit_type = FIRSTCOMMIT
+        merge_method = FIRSTCOMMIT
 
     elif p == 1:
         # Add the current commit to merge_commits
@@ -196,30 +194,44 @@ def github_extract_merge_request_commits(repo, commit):
         # DIRECTPUSH
         # Commits with one parent and no review units
         if r == 0:
-            commit_type = DIRECTPUSH
+            merge_method = DIRECTPUSH
 
         # REBASE or SQUASH:
-        # Commits with one parent and at least one review unit
+        #   Commits with one parent and at least one review unit
         elif r == 1:
-            if not is_first_review(review_units):
-                    commit_type = REBASE
-                    merge_commits = get_rebase_commits(repo, commit)
-            #else
-                #FIXME: differentiate between REBASE and SQUASH
+            # SQUASH:
+            #   If commit contains the first review unit AND
+            #   author and committer timestamps are the same
+            if (is_first_review(review_units)
+            and compare_timestamps (commit)):
+                merge_method = SQUASH
+            # REBASE:
+            #   If not the first review unit OR
+            #   author and committer timestamps are the same
+            else:
+                merge_method = REBASE
+                merge_commits = get_rebase_commits(repo, commit)
 
         # SQUASH:
         # Commits with one parent and more than one review unit
         else:
-            commit_type = SQUASH
+            merge_method = SQUASH
     else:
         # MERGE:
         # Commits with two parents
         merge_commits = get_pr_commits(repo, commit)
 
+    # Extract review units from all
+    # merge commits in the change
+    all_review_units = []
+    for commit in merge_commits:
+        for review_unit in get_review_units(commit):
+            all_review_units.append(review_unit)
+
     return [
-        commit_type,
+        merge_method,
         merge_commits,
-        review_units
+        all_review_units
     ]
 
 
@@ -231,12 +243,12 @@ def gerrit_extract_merge_request_commits(repo, commit):
 
     merge_commits = []
     review_units = []
-    commit_type = MERGE
+    merge_method = MERGE
 
     # FIRSTCOMMIT:
     # A commit with no parents
     if p == 0:
-       commit_type = FIRSTCOMMIT
+       merge_method = FIRSTCOMMIT
 
     elif p == 1:
         # Add the current commit to merge_commits
@@ -249,17 +261,17 @@ def gerrit_extract_merge_request_commits(repo, commit):
         # DIRECTPUSH
         # Commits with one parent and no review units
         if r == 0:
-            commit_type = DIRECTPUSH
+            merge_method = DIRECTPUSH
         else:
             #FIXME: differentiate between merge policies
-            commit_type = ""
+            merge_method = ""
     else:
         # MERGE:
         # Commits with two parents
         merge_commits = [commit, parents[1]]
 
     return [
-        commit_type,
+        merge_method,
         merge_commits,
         review_units
     ]
@@ -267,7 +279,7 @@ def gerrit_extract_merge_request_commits(repo, commit):
 
 # Extract the merge requests' commits
 def extract_review_units(server, repo, commit):
-if server == GITHUB:
-    return github_extract_merge_request_commits (repo, commit)
-else:
-    return gerrit_extract_merge_request_commits (repo, commit)
+    if server == GITHUB:
+        return github_extract_merge_request_commits (repo, commit)
+    else:
+        return gerrit_extract_merge_request_commits (repo, commit)
