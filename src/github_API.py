@@ -225,9 +225,24 @@ def form_github_crp(user, repo, branch_name):
 
 
 # Validate the GitHub repo's code review policy
-def validate_github_crp(repo, branch):
-	# Form the CRP
-	crp = form_github_crp(USER, repo, branch)
+def validate_github_crp(repo, branch, crp_path = None):
+	# Validate the locally stored CRP if a path is provided
+	if crp_path:
+		try:
+			# 
+			with open(crp_path, 'r') as f:
+				crp = f.read()
+				# End the program if the CRP file is empty
+				if not crp:
+					exit('No CRP is defined!')
+		except:
+			# End the program if the CRP file doesn't exist
+			exit('The local CRP file does not exist!')
+
+	else:
+		# Dynamically form the CRP using the GitHub 
+		# API if a local CRP wasn't provided
+		crp = form_github_crp(USER, repo, branch)
 
     # FIXME: Remove this part
 	# Sign and Store the CRP as a status check

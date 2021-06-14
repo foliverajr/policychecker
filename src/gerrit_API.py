@@ -182,12 +182,27 @@ def _form_gerrit_crp(g, project):
 
 
 # Validate the GitHub repo's code review policy
-def validate_gerrit_crp(repo, branch):
-	# Gerrit REST API call
-	REST = get_rest_api(USER, PASS, url)
+def validate_gerrit_crp(repo, branch, crp_path = None):
+    # Validate the locally stored CRP if a path is provided
+    if crp_path:
+        try:
+            with open(crp_path, 'r') as f:
+                crp = f.read()
+                if not crp:
+                    # End the program if the CRP file is empty
+                    exit('No CRP is defined!')
+        except:
+            # End the program if the CRP file doesn't exist
+            exit('The local CRP file does not exist!')
+    else:
+        # Dynamically form the CRP using the 
+        # Gerrit API if a local CRP wasn't provided
 
-	# Form the CRP
-	crp = _form_gerrit_crp(REST, repo)
+        # Gerrit REST API call
+        REST = get_rest_api(USER, PASS, url)
+
+        # Form the CRP
+        crp = _form_gerrit_crp(REST, repo)
 
     # FIXME: Remove this part
 	# Sign and Store the CRP

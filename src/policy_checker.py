@@ -66,7 +66,7 @@ def validate_reviews(server, crp, review_info):
 
 
 # Validate all reviews in a branch
-def validate_branch(server, repo_path, branch):
+def validate_branch(server, repo_path, branch, crp_path):
     try:
         # Create the local Repo object
         repo = Repo(repo_path)
@@ -80,9 +80,9 @@ def validate_branch(server, repo_path, branch):
     # Validate the CRP signature
     valid = True
     if server == GITHUB:
-        crp, valid = validate_github_crp(repo_name, branch)
+        crp, valid = validate_github_crp(repo_name, branch, crp_path)
     elif server == GERRIT:
-        crp, valid = validate_gerrit_crp(repo_name, branch)
+        crp, valid = validate_gerrit_crp(repo_name, branch, crp_path)
     else:
         exit(f"{server} is not supported!")
 
@@ -149,6 +149,9 @@ def create_parser():
     parser.add_argument('-k', '--key', type=str, required=True,
         help='the path to the public key(s)')
 
+    parser.add_argument('-c', '--crp', type=str, required=False,
+        help='the path to the file containing the CRP')
+    
     return parser
 
 
@@ -166,9 +169,13 @@ def main():
     server = args.server.lower()
     branch = args.branch
     repo_path = args.repo.rstrip('/')
-    
-    # Validate the branch
-    validate_branch(server, repo_path, branch)
+
+    if args.crp:
+        # Validate the branch using a local CRP if provided
+        validate_branch(server, repo_path, branch, args.crp)
+    else:
+        # Validate the branch
+        validate_branch(server, repo_path, branch)
 
 
 if __name__ == "__main__":

@@ -187,8 +187,10 @@ def _check_min_approvals(rules, collaborators, codeowners, review_units):
 
 # Check if the reviews created on GitHub are legitimate
 def github_validate_reviews(crp, merge_commits, review_units):
-        # Split CPR into three parts: protection rules, codeowners, gitarrtibutes
+    # Split CPR into three parts: protection rules, codeowners, gitarrtibutes
     crp = _github_parse_crp(crp)
+    if not crp:
+        exit("No CRP has been defined!")
     rules = crp[PROTECTION_RULES]
     collaborators = crp[COLLABORATORS]
     codeowners = crp[CODEOWNERS]

@@ -310,6 +310,8 @@ def is_submittable(crp, review_units):
 def gerrit_validate_reviews(crp, merge_commits, review_units):
     # Split CPR into three parts: rules.pl, project.config, groups
     crp = _gerrit_parse_crp(crp)
+    if not crp:
+        exit("No CRP has been defined!")
 
     # First commit in the merge_commits list is the head of PR
     head = merge_commits[0]
